@@ -1,15 +1,5 @@
 {
   "version": 2,
-  "name": "ristorante-static",
   "public": true,
-  "builds": [{ "src": "index.html", "use": "@vercel/static" }],
-  "headers": [
-    {
-      "source": "/(.*)",
-      "headers": [
-        { "key": "X-Frame-Options", "value": "SAMEORIGIN" },
-        { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" }
-      ]
-    }
-  ]
+  "builds": [{ "src": "**", "use": "@vercel/static" }]
 }
