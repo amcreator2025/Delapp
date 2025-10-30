@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>MARGHERITA EUR</title>
+  <style>
+    body { font-family: 'Segoe UI', sans-serif; margin:0; padding:0; background:#fafafa; color:#333; }
+    header { background:#004d40; color:#fff; padding:1rem; text-align:center; }
+    main { padding:2rem; max-width:800px; margin:0 auto; }
+    .options { display:flex; justify-content:center; gap:2rem; margin-bottom:2rem; }
+    .card { background:#fff; border-radius:10px; padding:1rem 2rem; text-align:center; border:2px solid transparent; transition:border 0.3s, background 0.3s; cursor:pointer; box-shadow:0 1px 3px rgba(0,0,0,0.1); }
+    .card:hover { background:#e0f2f1; }
+    .card.selected { border:2px solid #00796b; background:#b2dfdb; }
+    .slots { display:grid; grid-template-columns:repeat(auto-fill,minmax(120px,1fr)); gap:1rem; margin-top:1rem; }
+    .slot { background:#fff; border:1px solid #ddd; border-radius:8px; padding:0.75rem; text-align:center; cursor:pointer; transition:background 0.2s, border-color 0.2s; }
+    .slot:hover { background:#e0f2f1; border-color:#00796b; }
+    .slot.selected { background:#00796b; color:#fff; border-color:#00574b; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>MARGHERITA EUR</h1>
+    <p>Prima scegli la modalità d'ordine, poi scegli l'orario che preferisci</p>
+  </header>
+  <main>
+    <div class="options">
+      <div class="card" id="ritiro">RITIRO AL LOCALE</div>
+      <div class="card" id="consegna">CONSEGNA A DOMICILIO</div>
+    </div>
+    <div class="slots" id="slotsContainer"></div>
+  </main>
+  <script>
+    const ritroCard = document.getElementById('ritiro');
+    const consegnaCard = document.getElementById('consegna');
+    const slotsContainer = document.getElementById('slotsContainer');
+    let selectedCard = null;
+
+    function clearSelection() {
+      document.querySelectorAll('.card').forEach(c => c.classList.remove('selected'));
+      slotsContainer.innerHTML = '';
+    }
+
+    function generateRitiroSlots() {
+      const slots = [];
+      const start = 19 * 60;
+      const end = 23 * 60 + 45;
+      for (let m = start; m <= end; m += 15) {
+        const h = Math.floor(m/60).toString().padStart(2,'0');
+        const min = (m%60).toString().padStart(2,'0');
+        slots.push(`${h}:${min}`);
+      }
+      return slots;
+    }
+
+    function generateConsegnaSlots() {
+      const slots = [];
+      let m = 19*60, end = 22*60;
+      while (m < end) {
+        const h1 = Math.floor(m/60).toString().padStart(2,'0');
+        const min1 = (m%60).toString().padStart(2,'0');
+        const m2 = m + 30;
+        const h2 = Math.floor(m2/60).toString().padStart(2,'0');
+        const min2 = (m2%60).toString().padStart(2,'0');
+        slots.push(`${h1}:${min1} - ${h2}:${min2}`);
+        m += 30;
+      }
+      return slots;
+    }
+
+    function renderSlots(slots) {
+      slotsContainer.innerHTML = '';
+      slots.forEach(time => {
+        const div = document.createElement('div');
+        div.className = 'slot';
+        div.textContent = time;
+        div.onclick = () => {
+
+          const selectedTime = div.textContent;
+  localStorage.setItem('orario_scelto', selectedTime);
+  document.querySelectorAll('.slot').forEach(s => s.classList.remove('selected'));
+  div.classList.add('selected');
+  localStorage.removeItem('cartSelezione');
+  localStorage.removeItem('ordineCorrente');
+  localStorage.setItem('newOrder','1');
+  setTimeout(() => {
+    window.location.href = 'menu_iniziale.html';
+  }, 100);
+
+          document.querySelectorAll('.slot').forEach(s => s.classList.remove('selected'));
+          div.classList.add('selected');
+        };
+        slotsContainer.appendChild(div);
+      });
+    }
+
+    ritroCard.onclick = () => {
+  localStorage.setItem('modalita_scelta', 'asporto');
+      clearSelection();
+      ritroCard.classList.add('selected');
+      renderSlots(generateRitiroSlots());
+    };
+    consegnaCard.onclick = () => {
+  localStorage.setItem('modalita_scelta', 'consegna');
+      clearSelection();
+      consegnaCard.classList.add('selected');
+      renderSlots(generateConsegnaSlots());
+    };
+  </script>
+</body>
+</html>

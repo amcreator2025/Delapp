@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Delivery - Seleziona Piatti per Categoria</title>
+  <style>
+    body { font-family: 'Segoe UI', sans-serif; margin:0; padding:0; background:#fafafa; color:#333; }
+    header { background:#004d40; color:#fff; padding:1rem; text-align:center; }
+    main { padding:2rem; max-width:800px; margin:0 auto; }
+    .categories { display:flex; justify-content:center; flex-wrap:wrap; gap:0.5rem; margin-bottom:1rem; }
+    .categories button { padding:0.5rem 1rem; border:none; border-radius:25px; background:#ddd; color:#333; cursor:pointer; transition:background 0.2s; }
+    .categories button.active { background:#00796b; color:#fff; }
+    #filterInput { width:100%; padding:0.75rem; margin-bottom:1.5rem; border:1px solid #ccc; border-radius:25px; }
+    .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:1rem; }
+    .card { background:#fff; border-radius:10px; padding:1rem; text-align:center; border:2px solid transparent; transition:border 0.3s, background 0.3s; }
+    .card:hover { background:#e0f2f1; }
+    .card h3 { margin:0.5rem 0; color:#004d40; }
+    .card p.desc { font-size:0.9rem; color:#555; margin:0 0 0.5rem; }
+    .card span.price { font-weight:bold; color:#00796b; display:block; margin-bottom:0.5rem; }
+    .qty-controls { display:flex; justify-content:center; align-items:center; gap:0.5rem; margin-top:0.5rem; }
+    .qty-controls button { padding:0.3rem 0.6rem; border:none; border-radius:4px; background:#00796b; color:#fff; cursor:pointer; font-size:1rem; transition:background 0.2s; }
+    .qty-controls button:disabled { background:#ccc; cursor:not-allowed; }
+    .qty-controls span.quantity { min-width:20px; display:inline-block; text-align:center; }
+    #submitOrder { margin:2rem auto; display:block; padding:0.75rem 2rem; background:#00796b; color:#fff; border:none; border-radius:25px; cursor:pointer; }
+    #submitOrder:hover { background:#00574b; }
+  </style>
+
+  <style>
+  /* CART PATCH (realtime + sync tabs v2) */
+  #cartBadgeFloating{position:fixed; right:16px; top:16px; z-index:9999; background:#004d40; color:#fff; 
+    border-radius:999px; padding:8px 12px; font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif; 
+    box-shadow:0 4px 14px rgba(0,0,0,.15); display:flex; align-items:center; gap:.5rem; cursor:pointer}
+  #cartBadgeFloating .dot{width:8px;height:8px;border-radius:50%; background:#fff; opacity:.9}
+  #cartBadgeFloating strong{min-width:1.5em; text-align:center}
+  #cartDrawer{position:fixed; right:16px; bottom:16px; z-index:9999; width:360px; max-width:92vw; 
+    transform:translateY(calc(100% + 24px)); transition:transform .3s ease; background:#fff; border:1px solid #eaeaea; 
+    border-radius:16px; box-shadow:0 12px 24px rgba(0,0,0,.18); overflow:hidden;}
+  #cartDrawer.open{transform:translateY(0);}
+  #cartDrawer header{display:flex;align-items:center;justify-content:space-between;background:#083b36;color:#fff;padding:10px 14px}
+  #cartDrawer header h3{margin:0;font-size:1rem}
+  #cartDrawer .content{padding:12px; max-height:50vh; overflow:auto; font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+  #cartDrawer .empty{padding:14px; border:1px dashed #ddd; border-radius:12px; text-align:center; color:#666}
+  .cp-row{display:grid; grid-template-columns:1fr auto; gap:.5rem; padding:8px 0; border-bottom:1px dashed #efefef}
+  .cp-row:last-child{border-bottom:none}
+  .cp-title{font-weight:600}
+  .cp-meta{font-size:.9rem; color:#666}
+  .cp-actions{display:flex; align-items:center; gap:.35rem}
+  .cp-actions button{border:none; background:#00796b; color:#fff; padding:.25rem .5rem; border-radius:8px; cursor:pointer}
+  .cp-actions .remove{background:#e53935}
+  .cp-total{display:flex; justify-content:space-between; align-items:center; font-weight:700; margin-top:8px}
+  .cp-buttons{display:flex; gap:.5rem; margin-top:8px}
+  .cp-buttons button{flex:1; padding:.6rem .8rem; border:none; border-radius:999px; cursor:pointer; font-weight:600}
+  #cp-clear{background:#f3f4f6}
+  #cp-checkout{background:#00796b; color:#fff}
+  </style>
+
+  <!-- Supabase JS v2 -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+  <header>
+    <h1>Delivery</h1>
+    <p>Seleziona categoria, piatti e quantità</p>
+  </header>
+  <main>
+    <div class="categories" id="categoryTabs"></div>
+    <input type="text" id="filterInput" placeholder="Cerca un piatto...">
+    <div class="grid" id="dishGrid"></div>
+    <button id="submitOrder">Prosegui</button>
+  </main>
+
+<!-- === MENU LOGIC (Supabase) — con schema configurabile === -->
+<script>
+  // 🔧 Credenziali (le tue sono già corrette)
+  const SUPABASE_URL = "https://svulhysmqimrkxlregyy.supabase.co";
+  const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN2dWxoeXNtcWltcmt4bHJlZ3l5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTYwNjYzNTUsImV4cCI6MjA3MTY0MjM1NX0.7AdMQITbKawLMLXUf2a4AnSGNNKB7lzel2fJ6-LzHYo";
+  const { createClient } = supabase;
+  const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+  // ⬇️ Metti qui SCHEMA e TAB/VIEW reali
+  const DB_SCHEMA   = 'public';   // es. 'public', 'app', 'rest', ...
+  const TABLE_ITEMS = 'menu_items';   // es. 'piatti', 'prodotti', 'vw_menu', ...
+
+  // 🔧 Colonne reali (non usiamo available/updated_at)
+  const COL = {
+    id:          'id',           // opzionale
+    name:        'name',         // es. 'nome' o 'name'
+    price:       'price',       // es. 'prezzo' o 'price'
+    category:    'category',    // testo (se è FK numerica vedi nota più sotto)
+    description: 'description'   // es. 'descrizione' o 'description'
+  };
+
+  // Stato locale
+  let categories = [];
+  let data = {};
+  let activeCat = null;
+
+  const tabsDiv = document.getElementById('categoryTabs');
+  const grid = document.getElementById('dishGrid');
+  const filterInput = document.getElementById('filterInput');
+  const submitBtn = document.getElementById('submitOrder');
+
+  // --- Carrello (riuso esatto del tuo flusso) ---
+  const CART_KEY = 'cartSelezione';
+  function readCartSafe(){ try { return JSON.parse(localStorage.getItem(CART_KEY) || '{}'); } catch(e){ return {}; } }
+  function writeCartSafe(obj){ localStorage.setItem(CART_KEY, JSON.stringify(obj || {})); }
+  function keyFor(cat, name, priceText){ return cat + '::' + name + '::' + priceText; }
+  function getQty(cat, name, priceText){
+    const cartNow = readCartSafe();
+    const k = keyFor(cat,name,priceText);
+    return cartNow[k]?.qty || 0;
+  }
+  function setQty(cat, name, priceText, qty){
+    const cartNow = readCartSafe();
+    const k = keyFor(cat,name,priceText);
+    if(qty > 0){ cartNow[k] = { category: cat, name, priceText, qty }; }
+    else{ delete cartNow[k]; }
+    writeCartSafe(cartNow);
+    document.dispatchEvent(new CustomEvent('cart:updated',{detail:{cart: cartNow}}));
+  }
+
+  // --- UI ---
+  function esc(s){
+    return String(s ?? '')
+      .replaceAll('&','&amp;').replaceAll('<','&lt;')
+      .replaceAll('>','&gt;').replaceAll('"','&quot;')
+      .replaceAll("'","&#039;");
+  }
+
+  function renderTabs(){
+    tabsDiv.innerHTML='';
+    if(!categories.length){ tabsDiv.innerHTML = '<span style="color:#666">Nessuna categoria</span>'; return; }
+    if(!activeCat) activeCat = categories[0];
+    categories.forEach(cat=>{
+      const btn=document.createElement('button');
+      btn.textContent=cat;
+      btn.className = (cat===activeCat ? 'active' : '');
+      btn.onclick=()=>{ activeCat=cat; renderDishes(filterInput.value); renderTabs(); };
+      tabsDiv.appendChild(btn);
+    });
+  }
+
+  function renderDishes(filter=''){
+    grid.innerHTML='';
+    const list = data[activeCat] || [];
+    const q = (filter||'').toLowerCase();
+    list
+      .filter(d=> (d.name||'').toLowerCase().includes(q) || (d.description||'').toLowerCase().includes(q))
+      .forEach(dish=>{
+        const card=document.createElement('div');
+        card.className='card';
+        const priceText = (dish.price + '€'); // compatibile con il tuo carrello
+        const currentQty = getQty(activeCat, dish.name, priceText);
+        card.innerHTML = `
+          <h3>${esc(dish.name)}</h3>
+          <p class="desc">${esc(dish.description||'')}</p>
+          <span class="price">${esc(priceText)}</span>
+          <div class="qty-controls">
+            <button class="decrease"${currentQty===0?' disabled':''}>-</button>
+            <span class="quantity">${currentQty}</span>
+            <button class="increase">+</button>
+          </div>`;
+        const dec=card.querySelector('.decrease'),
+              inc=card.querySelector('.increase'),
+              qty=card.querySelector('.quantity');
+        inc.onclick=()=>{ let v=+qty.textContent; v++; qty.textContent=v; dec.disabled=(v===0); setQty(activeCat, dish.name, priceText, v); };
+        dec.onclick=()=>{ let v=+qty.textContent; if(v>0) v--; qty.textContent=v; dec.disabled=(v===0); setQty(activeCat, dish.name, priceText, v); };
+        grid.appendChild(card);
+      });
+    if(!grid.children.length){
+      grid.innerHTML = `<div style="grid-column:1/-1; color:#666; text-align:center">Nessun piatto trovato</div>`;
+    }
+  }
+function proceedToAnagrafica(){
+  // 1) Legge il carrello
+  let entries = [];
+  try { entries = Object.values(JSON.parse(localStorage.getItem('cartSelezione') || '{}')); }
+  catch(e){ entries = []; }
+
+  if(entries.length === 0){
+    alert('Seleziona almeno un piatto prima di proseguire.');
+    return;
+  }
+
+  // 2) Legge modalità/orario impostati in scelta_ordine
+  const rawModalita = (localStorage.getItem('modalita_scelta') || '').toLowerCase().trim();
+  const modalita = ['asporto','ritiro','pickup'].includes(rawModalita) ? 'asporto'
+                 : ['consegna','delivery','domicilio'].includes(rawModalita) ? 'consegna'
+                 : '';
+
+  const orario = localStorage.getItem('orario_scelto') || 'Orario non selezionato';
+
+  if(!modalita){
+    alert('Modalità non selezionata. Torno alla scelta modalità/orario.');
+    window.location.href = 'scelta_ordine.html';
+    return;
+  }
+
+  // 3) Prepara riepilogo ordine nello stesso formato che già usi
+  const order = entries.map(it => `${it.name} x${it.qty} — ${it.priceText || ''}`);
+  localStorage.setItem('ordineCorrente', JSON.stringify({
+    piatti: order,
+    orario,
+    modalita
+  }));
+
+  // 4) Vai all’anagrafica corretta (file nello stesso path)
+  if(modalita === 'asporto'){
+    window.location.href = 'anagrafica_cliente_asporto.html';
+  } else {
+    window.location.href = 'anagrafica_cliente_consegna.html';
+  }
+}
+// --- FINE PATCH ---
+
+  function renderAll(){ renderTabs(); renderDishes(filterInput.value); }
+  filterInput.oninput = e => renderDishes(e.target.value);
+  if (typeof proceedToAnagrafica === 'function') submitBtn.onclick = proceedToAnagrafica;
+
+  // --- Fetch da Supabase (usando schema configurabile) ---
+  async function fetchMenu(){
+    // select con sole colonne esistenti
+    const parts = [];
+    if (COL.id)          parts.push(COL.id);
+    if (COL.name)        parts.push(COL.name);
+    if (COL.price)       parts.push(COL.price);
+    if (COL.category)    parts.push(COL.category);
+    if (COL.description) parts.push(COL.description);
+    const sel = parts.join(', ');
+
+    const { data: rows, error } = await sb
+      .schema(DB_SCHEMA)                 // 👈 schema
+      .from(TABLE_ITEMS)                 // 👈 tabella/view
+      .select(sel)
+      .order(COL.category, { ascending: true })
+      .order(COL.name, { ascending: true });
+
+    if(error){
+      console.error('[Supabase SELECT ERROR]', { schema: DB_SCHEMA, table: TABLE_ITEMS, error });
+      grid.innerHTML = `<div style="grid-column:1/-1; color:#c00; text-align:center">
+        Errore nel caricamento del menu: ${esc(error.message||'')}<br/>
+        <small>(schema: <b>${esc(DB_SCHEMA)}</b>, tabella: <b>${esc(TABLE_ITEMS)}</b>)</small>
+      </div>`;
+      return;
+    }
+
+    // Mappa a { CATEGORIA: [...] }
+    const byCat = {};
+    (rows||[]).forEach(r=>{
+      const cat = ((r[COL.category] ?? 'ALTRO') + '').toUpperCase();
+      const priceVal = (typeof r[COL.price] === 'number') ? r[COL.price] : parseFloat(r[COL.price] || '0');
+      (byCat[cat] ||= []).push({
+        name: r[COL.name] || '',
+        description: r[COL.description] || '',
+        price: isNaN(priceVal) ? 0 : priceVal
+      });
+    });
+
+    Object.keys(byCat).forEach(cat=>{
+      byCat[cat].sort((a,b)=> a.name.localeCompare(b.name,'it'));
+    });
+
+    data = byCat;
+    categories = Object.keys(byCat).sort((a,b)=> a.localeCompare(b,'it'));
+    if(!categories.includes(activeCat)) activeCat = categories[0] || null;
+    renderAll();
+  }
+
+  // --- Realtime con schema ---
+  function subscribeRealtime(){
+    sb
+      .channel(TABLE_ITEMS + '_changes')
+      .on('postgres_changes', { event: '*', schema: DB_SCHEMA, table: TABLE_ITEMS }, () => fetchMenu())
+      .subscribe();
+  }
+
+  // Avvio
+  fetchMenu();
+  subscribeRealtime();
+</script>
+
+
+  <!-- === CART DRAWER (lasciato intatto) === -->
+  <div id="cartBadgeFloating" aria-label="Carrello" title="Apri carrello">
+    <span class="dot"></span><span><strong id="cp-count">0</strong> nel carrello</span>
+  </div>
+  <div id="cartDrawer" role="dialog" aria-modal="true" aria-label="Carrello">
+    <header>
+      <h3>Il tuo carrello</h3>
+      <button id="cp-toggle" style="border:none;background:transparent;color:#fff;font-weight:700;cursor:pointer">Chiudi</button>
+    </header>
+    <div class="content">
+      <div id="cp-empty" class="empty">Il carrello è vuoto. Aggiungi qualche piatto! 🍕</div>
+      <div id="cp-list" hidden></div>
+      <div id="cp-totalRow" class="cp-total" hidden><span>Subtotale</span><span id="cp-total">0,00€</span></div>
+      <div id="cp-buttons" class="cp-buttons" hidden>
+        <button id="cp-clear">Svuota</button>
+        <button id="cp-checkout">Prosegui</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+  (()=>{
+    const CART_KEY='cartSelezione';
+    const submitBtn = document.getElementById('submitOrder') || (()=>{ const b=document.createElement('button'); b.style.display='none'; document.body.appendChild(b); return b; })();
+    const badge = document.getElementById('cartBadgeFloating');
+    const drawer = document.getElementById('cartDrawer');
+    const list = document.getElementById('cp-list');
+    const empty = document.getElementById('cp-empty');
+    const totalRow = document.getElementById('cp-totalRow');
+    const totalSpan = document.getElementById('cp-total');
+    const buttons = document.getElementById('cp-buttons');
+    const clearBtn = document.getElementById('cp-clear');
+    const checkoutBtn = document.getElementById('cp-checkout');
+    const countSpan = document.getElementById('cp-count');
+
+    function readStorage(){ try{ return JSON.parse(localStorage.getItem(CART_KEY) || '{}'); }catch(e){ return {}; } }
+    function save(cart){ localStorage.setItem(CART_KEY, JSON.stringify(cart)); }
+    function parsePrice(t){ if(!t) return 0; const n=t.replace('€','').replace(/\s/g,'').replace(',','.'); const v=parseFloat(n); return isNaN(v)?0:v; }
+    function formatEUR(x){ return x.toLocaleString('it-IT',{minimumFractionDigits:2,maximumFractionDigits:2}) + '€'; }
+    function keyOf(category,name,priceText){ return (category||'')+'::'+name+'::'+(priceText||''); }
+    function values(obj){ return Object.values(obj||{}); }
+
+    let cart = readStorage();
+    let lastSnapshot = JSON.stringify(cart);
+
+    // ---------- SYNC CON LE SCHEDE (fallback senza data-attributes) ----------
+    function syncTabsForItemFallback({name, priceText, qty}){
+      const cards = Array.from(document.querySelectorAll('.card')).filter(card=>{
+        const title = card.querySelector('h3')?.textContent?.trim() || '';
+        const price = card.querySelector('.price')?.textContent?.trim() || '';
+        return title === name && price === priceText;
+      });
+      for(const card of cards){
+        const qtySpan = card.querySelector('.quantity');
+        const decBtn = card.querySelector('.decrease');
+        if(qtySpan){ qtySpan.textContent = String(qty); }
+        if(decBtn){ decBtn.disabled = qty === 0; }
+        card.classList.toggle('has-qty', qty>0);
+      }
+    }
+
+    function render(){
+      const entries = values(cart);
+      const has = entries.length>0;
+      empty.hidden = has;
+      list.hidden = !has;
+      totalRow.hidden = !has;
+      buttons.hidden = !has;
+      countSpan.textContent = entries.reduce((n,it)=>n+(it.qty||0),0);
+      if(!has){ list.innerHTML=''; totalSpan.textContent='0,00€'; return; }
+
+      list.innerHTML='';
+      entries.sort((a,b)=> (a.category||'').localeCompare(b.category||'') || a.name.localeCompare(b.name));
+      for(const it of entries){
+        const row = document.createElement('div');
+        row.className = 'cp-row';
+        row.innerHTML = `
+          <div>
+            <div class="cp-title">${it.name}</div>
+            <div class="cp-meta">${it.category||''} · ${it.priceText||''} cad</div>
+          </div>
+          <div class="cp-actions">
+            <button class="minus">-</button>
+            <span aria-label="quantità">${it.qty||0}</span>
+            <button class="plus">+</button>
+            <button class="remove" title="Rimuovi">×</button>
+          </div>`;
+        row.querySelector('.minus').onclick = ()=> setQty(it.category,it.name,it.priceText,Math.max(0,(it.qty||0)-1));
+        row.querySelector('.plus').onclick = ()=> setQty(it.category,it.name,it.priceText,(it.qty||0)+1);
+        row.querySelector('.remove').onclick = ()=> setQty(it.category,it.name,it.priceText,0);
+        list.appendChild(row);
+      }
+      const subtotal = entries.reduce((s,it)=> s + (parsePrice(it.priceText)||0)*(it.qty||0), 0);
+      totalSpan.textContent = formatEUR(subtotal);
+    }
+
+    function setQty(category,name,priceText,qty){
+      const k = keyOf(category,name,priceText);
+      if(qty>0){ cart[k]={category,name,priceText,qty}; }
+      else{ delete cart[k]; }
+      save(cart);
+      lastSnapshot = JSON.stringify(cart);
+      render();
+      syncTabsForItemFallback({name,priceText,qty});
+      document.dispatchEvent(new CustomEvent('cart:updated',{detail:{cart}}));
+    }
+
+    function applyExternalState(){
+      const snap = JSON.stringify(readStorage());
+      if(snap !== lastSnapshot){
+        lastSnapshot = snap;
+        cart = JSON.parse(snap || '{}');
+        render();
+        document.querySelectorAll('.card .quantity').forEach(el=> el.textContent='0');
+        document.querySelectorAll('.card .decrease').forEach(btn=> btn.disabled=true);
+        const entries = values(cart);
+        entries.forEach(it=> syncTabsForItemFallback({name:it.name,priceText:it.priceText,qty:it.qty||0}));
+      }
+    }
+    window.addEventListener('storage', (ev)=>{ if(ev.key === CART_KEY) applyExternalState(); });
+    setInterval(applyExternalState, 300);
+
+    badge.addEventListener('click', ()=> drawer.classList.add('open'));
+    document.getElementById('cp-toggle').addEventListener('click', ()=> drawer.classList.remove('open'));
+    clearBtn.addEventListener('click', ()=>{ if(confirm('Svuotare il carrello?')){ cart={}; save(cart); lastSnapshot=JSON.stringify(cart); render(); applyExternalState(); } });
+    checkoutBtn.addEventListener('click', ()=> { drawer.classList.remove('open'); 
+      // riutilizzo la funzione già definita nello script sopra
+      const fn = window.proceedToAnagrafica || (typeof proceedToAnagrafica!=='undefined' ? proceedToAnagrafica : null);
+      if(fn) fn(); else submitBtn.click();
+    });
+
+    render();
+    applyExternalState();
+  })();
+  </script>
+</body>
+</html>
